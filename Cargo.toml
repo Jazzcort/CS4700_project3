@@ -9,3 +9,5 @@ edition = "2021"
 regex = "1.10.3"
 lazy_static = "1.4.0"
 serde_json = "1.0.113"
+serde = { version = "1.0.196", features = ["derive"] }
+clap = { version = "4.4.18", features = ["derive"] }

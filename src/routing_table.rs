@@ -1,12 +1,13 @@
 use crate::ipv4::{self, apply_mask, apply_mask_prefix, netmask_digit, to_decimal, to_ipv4};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub enum Origin {
     Igp = 3,
     Egp = 2,
     Unk = 1,
 }
 
+#[derive(Clone, Debug)]
 pub struct Network {
     peer: String,
     net_prefix: String,
@@ -39,6 +40,7 @@ impl Network {
     }
 }
 
+#[derive(Debug)]
 pub struct Table {
     table: Vec<Network>,
 }
@@ -48,7 +50,16 @@ impl Table {
         Table { table: vec![] }
     }
 
-    pub fn update(&mut self, new_net: Network) {}
+    pub fn update(&mut self, mut new_net: Network) {
+        loop {
+            match self.aggregate(new_net.clone()) {
+                Some(n) => {new_net = n},
+                None => {break}
+            }
+        }
+        self.table.push(new_net)
+
+    }
 
     fn aggregate(&mut self, network: Network) -> Option<Network> {
 
@@ -58,18 +69,11 @@ impl Table {
                 let new_netmask = to_ipv4(to_decimal(&net.netmask) << 1);
                 let new_net_prefix = to_ipv4(apply_mask(&net.net_prefix, &new_netmask));
                 let aggregated_net = Network::new(net.peer, new_net_prefix, new_netmask, net.localpref, net.self_origin, net.as_path, net.origin);
-
+                Some(aggregated_net)
             },
-            None => {}
-        }
-
-        // for net in self.table.iter().enumerate() {
-        //     if Table::is_aggregable(net, &network) {
-        //         found = Some()
-        //     }
-        // }
+            None => {None}
+        }        
         
-        None
     }
 
     fn is_aggregable(net1: &Network, net2: &Network) -> bool {
