@@ -1,7 +1,8 @@
 use std::net::UdpSocket;
 use clap::{Parser, ValueEnum};
 
-use router::Router;
+
+use router::{Router, GLOBAL_ROUTER};
 
 use crate::{ipv4::{apply_mask, apply_mask_prefix, netmask_digit, to_decimal}, routing_table::{Network, Origin, Table}};
 
@@ -14,12 +15,36 @@ extern crate lazy_static;
 #[derive(Parser, Debug)]
 #[command(author, about, long_about = None)]
 struct Cli {
-    asn: u8
+    asn: u8,
+    neighbors: Vec<String>,
 }
 
 fn main() {
+    // Parse command line arguments into a `Cli` struct.
     let cli = Cli::parse();
-    dbg!(cli);
+    // Iterate over each neighbor specified in the command line arguments.
+    for neighbor in &cli.neighbors {
+        let neighbor_information: Vec<_> = neighbor.split('-').collect();
+        // Destructure the vector to individual variables for readability.
+        let (neighbor_port, neighbor_ip, neighbor_relation) = (neighbor_information[0], neighbor_information[1], neighbor_information[2]);
+        
+        // Attempt to add the neighbor to the global router. `Router::add_neighbor` updates
+        // the global router instance with the new neighbor's details.
+        match Router::add_neighbor(neighbor_ip, neighbor_port, neighbor_relation, cli.asn) {
+            Ok(()) => {
+                println!("Router created successfully");
+            }
+            Err(e) => {
+                println!("Error : {}", e);
+            }
+        }
+
+    }
+    println!("{:?}", *GLOBAL_ROUTER.lock().unwrap());
+
+
+
+
     // dbg!(ipv4::apply_mask("128.42.222.198", "255.255.128.0"));
     // dbg!(ipv4::apply_mask("128.42.128.0", "255.255.0.0"));
     // dbg!(ipv4::to_decimal("128.42.128.0"));
@@ -89,11 +114,11 @@ fn main() {
     // dbg!(format!("{:032b}", to_decimal("255.255.253.0")));
 
 
-    let mut router = Router::new("127.0.0.1:5005".to_string()).unwrap();
-    router.register_neighbor("192.168.0.2", "63456", router::NeighborType::Cust);
-    router.register_neighbor("172.168.0.2", "63886", router::NeighborType::Cust);
-    dbg!(&router.sender);
-    router.keep_listen();
+    // let mut router = Router::new("127.0.0.1:5005".to_string()).unwrap();
+    // router.register_neighbor("192.168.0.2", "63456", router::NeighborType::Cust);
+    // router.register_neighbor("172.168.0.2", "63886", router::NeighborType::Cust);
+    // dbg!(&router.sender);
+    // router.keep_listen();
 
     // let a = UdpSocket::bind("127.0.0.1:7777").unwrap();
     // let b = UdpSocket::bind("127.0.0.1:8888").unwrap();
