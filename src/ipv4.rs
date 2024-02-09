@@ -1,10 +1,13 @@
 use regex::Regex;
 
+// Avoid initialization of static variable until it is actually needed
 lazy_static! {
     static ref REGEX_IPV4: Regex =
         Regex::new(r"(?<quad1>\d+).(?<quad2>\d+).(?<quad3>\d+).(?<quad4>\d+)").unwrap();
 }
 
+// This function converts an IPv4 address from its string representation 
+// to its decimal representation.
 pub fn to_decimal(ip: &str) -> u32 {
     let cap = REGEX_IPV4.captures(ip).unwrap();
     let (quad1, quad2, quad3, quad4) = (
@@ -17,6 +20,8 @@ pub fn to_decimal(ip: &str) -> u32 {
     (quad1 << 24) + (quad2 << 16) + (quad3 << 8) + quad4
 }
 
+// This function converts a decimal representation of an IPv4 address 
+// back into its string representation.
 pub fn to_ipv4(deci: u32) -> String {
     let b_str = format!("{:032b}", deci);
     let a = &b_str[..1];
@@ -30,6 +35,7 @@ pub fn to_ipv4(deci: u32) -> String {
     )
 }
 
+// Applies a netmask to an IPv4 address
 pub fn apply_mask(network: &str, netmask: &str) -> u32 {
     let net_deci = to_decimal(network);
     let netmask_deci = to_decimal(netmask);
@@ -37,6 +43,7 @@ pub fn apply_mask(network: &str, netmask: &str) -> u32 {
     net_deci & netmask_deci
 }
 
+// This function extracts the significant bits of the network address.
 pub fn apply_mask_prefix(network: &str, netmask: &str) -> u32 {
     let not_shift = apply_mask(network, netmask);
     let mask_digit = netmask_digit(netmask);
@@ -44,12 +51,14 @@ pub fn apply_mask_prefix(network: &str, netmask: &str) -> u32 {
     not_shift >> (32 - mask_digit)
 }
 
+// This function calculates the number of bits set to 1 in the netmask
 pub fn netmask_digit(mask: &str) -> i32 {
     let mask_deci = to_decimal(mask);
     let b_str: String = format!("{:032b}", mask_deci);
     b_str.bytes().filter(|&x| x == b'1').count() as i32
 }
 
+// Compare target prefix with the network prefix after applying the netmask.
 pub fn check_match(prefix: &str, netmask: &str, network: &str) -> bool {
     let prefix_deci = to_decimal(prefix);
     let net_prefix_deci = apply_mask(network, netmask);
