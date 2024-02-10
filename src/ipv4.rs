@@ -6,7 +6,7 @@ lazy_static! {
         Regex::new(r"(?<quad1>\d+).(?<quad2>\d+).(?<quad3>\d+).(?<quad4>\d+)").unwrap();
 }
 
-// This function converts an IPv4 address from its string representation 
+// This function converts an IPv4 address from its string representation
 // to its decimal representation.
 pub fn to_decimal(ip: &str) -> u32 {
     let cap = REGEX_IPV4.captures(ip).unwrap();
@@ -20,7 +20,7 @@ pub fn to_decimal(ip: &str) -> u32 {
     (quad1 << 24) + (quad2 << 16) + (quad3 << 8) + quad4
 }
 
-// This function converts a decimal representation of an IPv4 address 
+// This function converts a decimal representation of an IPv4 address
 // back into its string representation.
 pub fn to_ipv4(deci: u32) -> String {
     let b_str = format!("{:032b}", deci);
