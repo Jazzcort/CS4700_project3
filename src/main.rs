@@ -47,7 +47,8 @@ fn main() {
         }
     }
 
-    Router::start_router();
+
+    // Router::start_router();
 
     // println!("{:?}", *GLOBAL_ROUTER.lock().unwrap());
 

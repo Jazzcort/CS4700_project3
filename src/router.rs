@@ -198,9 +198,34 @@ impl Router {
         return Err(format!("Data incomplete"));
     }
 
-    // pub fn handle_dump_message(message: &Message) {
+
+    /// Handles a "dump" message received from a neighbor and responds with a "table" message.
+    /// This "table" message contains a copy of the current routing table.
+    /// # Arguments
+    /// * `message` - A reference to the received "dump" message.
+    /// * `socket` - A mutable reference to the UDP socket for sending the response.
+    /// * `global_router` - A reference to the global router instance containing the routing table and other configurations.
+    ///
+    /// # Returns
+    /// * `Result<(), String>` - Ok(()) if the response was successfully sent, or Err(String) with an error message if not.
+    pub fn handle_dump_message(message: &Message, socket: &mut UdpSocket, global_router: &Router) -> Result<(), String> {
+        // Generate response to send back to the sender
+        let response = json!({
+            "src": message.dst,
+            "dst": message.src,
+            "type": "table",
+            "msg": global_router.routing_table.clone() // Copy rounting table from global router
+        });
         
-    // }
+        // Find the correct port to send it back
+        for (nei_ip, nei_port) in global_router.ports.iter() {
+            if nei_ip == &message.src {
+                socket.send_to(response.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("Failed to send table message: {}", e))?;
+            }
+        }
+
+        Ok(())
+    }
 
     // pub fn register_neighbor(&mut self, ip: &str, port: &str, neighbor_type: NeighborType) {
     //     self.sender.insert(ip.to_string(), (neighbor_type, format!("127.0.0.1:{port}")));

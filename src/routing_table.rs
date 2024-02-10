@@ -1,13 +1,15 @@
 use crate::ipv4::{self, apply_mask, apply_mask_prefix, netmask_digit, to_decimal, to_ipv4};
+use serde::Serialize;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Serialize)]
 pub enum Origin {
     Igp = 3,
     Egp = 2,
     Unk = 1,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Network {
     peer: String,
     net_prefix: String,
@@ -40,7 +42,7 @@ impl Network {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Table {
     table: Vec<Network>,
 }
