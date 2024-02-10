@@ -39,7 +39,10 @@ pub struct Router {
     /// The relationship can be one of Peer, Customer (Cust), or Provider (Prov),
     /// and affects routing decisions and policy.
     relations: HashMap<String, NeighborType>,
-                              
+    /// The routing table for this router.
+    /// This table contains information about the network topology and is used
+    /// to make routing decisions.
+    routing_table: Table,                       
 }
 
 // Create a globally accessible `Router` instance wrapped in a `Mutex` for thread safe mutable access.
@@ -48,7 +51,8 @@ lazy_static! {
         asn: 0,
         sockets: HashMap::new(),
         ports: HashMap::new(),
-        relations: HashMap::new()
+        relations: HashMap::new(),
+        routing_table: Table::new(),
     });
 }
 
@@ -107,7 +111,7 @@ impl Router {
             .lock()
             .map_err(|e| format!("Failed to lock router: {}", e))?;
 
-        // Iterate through all the registered neighbors
+        // Iterate through all the registered neighbors and do the handshake
         for ip_addr in router.relations.keys() {
             let (socket, port, relation) = (
                 router.sockets.get(ip_addr).unwrap(),
@@ -193,6 +197,10 @@ impl Router {
         }
         return Err(format!("Data incomplete"));
     }
+
+    // pub fn handle_dump_message(message: &Message) {
+        
+    // }
 
     // pub fn register_neighbor(&mut self, ip: &str, port: &str, neighbor_type: NeighborType) {
     //     self.sender.insert(ip.to_string(), (neighbor_type, format!("127.0.0.1:{port}")));
