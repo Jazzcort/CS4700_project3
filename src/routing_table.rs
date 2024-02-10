@@ -53,27 +53,35 @@ impl Table {
     pub fn update(&mut self, mut new_net: Network) {
         loop {
             match self.aggregate(new_net.clone()) {
-                Some(n) => {new_net = n},
-                None => {break}
+                Some(n) => new_net = n,
+                None => break,
             }
         }
         self.table.push(new_net)
-
     }
 
     fn aggregate(&mut self, network: Network) -> Option<Network> {
-
-        match (0..self.table.len()).into_iter().find(|ind| Table::is_aggregable(&self.table[*ind], &network)) {
+        match (0..self.table.len())
+            .into_iter()
+            .find(|ind| Table::is_aggregable(&self.table[*ind], &network))
+        {
             Some(ind) => {
-                let net =  self.table.remove(ind);
+                let net = self.table.remove(ind);
                 let new_netmask = to_ipv4(to_decimal(&net.netmask) << 1);
                 let new_net_prefix = to_ipv4(apply_mask(&net.net_prefix, &new_netmask));
-                let aggregated_net = Network::new(net.peer, new_net_prefix, new_netmask, net.localpref, net.self_origin, net.as_path, net.origin);
+                let aggregated_net = Network::new(
+                    net.peer,
+                    new_net_prefix,
+                    new_netmask,
+                    net.localpref,
+                    net.self_origin,
+                    net.as_path,
+                    net.origin,
+                );
                 Some(aggregated_net)
-            },
-            None => {None}
-        }        
-        
+            }
+            None => None,
+        }
     }
 
     fn is_aggregable(net1: &Network, net2: &Network) -> bool {
@@ -87,7 +95,7 @@ impl Table {
             return false;
         }
 
-        // Check if localprefs are same 
+        // Check if localprefs are same
         if net1.localpref != net2.localpref {
             return false;
         }

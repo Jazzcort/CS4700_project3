@@ -1,14 +1,17 @@
-use std::net::UdpSocket;
 use clap::{Parser, ValueEnum};
-
+use std::net::UdpSocket;
 
 use router::{Router, GLOBAL_ROUTER};
+use serde_json::Value;
 
-use crate::{ipv4::{apply_mask, apply_mask_prefix, netmask_digit, to_decimal}, routing_table::{Network, Origin, Table}};
+use crate::{
+    ipv4::{apply_mask, apply_mask_prefix, netmask_digit, to_decimal},
+    routing_table::{Network, Origin, Table},
+};
 
 mod ipv4;
-mod routing_table;
 mod router;
+mod routing_table;
 #[macro_use]
 extern crate lazy_static;
 
@@ -26,8 +29,12 @@ fn main() {
     for neighbor in &cli.neighbors {
         let neighbor_information: Vec<_> = neighbor.split('-').collect();
         // Destructure the vector to individual variables for readability.
-        let (neighbor_port, neighbor_ip, neighbor_relation) = (neighbor_information[0], neighbor_information[1], neighbor_information[2]);
-        
+        let (neighbor_port, neighbor_ip, neighbor_relation) = (
+            neighbor_information[0],
+            neighbor_information[1],
+            neighbor_information[2],
+        );
+
         // Attempt to add the neighbor to the global router. `Router::add_neighbor` updates
         // the global router instance with the new neighbor's details.
         match Router::add_neighbor(neighbor_ip, neighbor_port, neighbor_relation, cli.asn) {
@@ -38,12 +45,11 @@ fn main() {
                 println!("Error : {}", e);
             }
         }
-
     }
-    println!("{:?}", *GLOBAL_ROUTER.lock().unwrap());
 
+    Router::start_router();
 
-
+    // println!("{:?}", *GLOBAL_ROUTER.lock().unwrap());
 
     // dbg!(ipv4::apply_mask("128.42.222.198", "255.255.128.0"));
     // dbg!(ipv4::apply_mask("128.42.128.0", "255.255.0.0"));
@@ -112,7 +118,6 @@ fn main() {
     // dbg!(netmask_digit("255.255.224.0"));
     // dbg!(format!("{:08b}", 112));
     // dbg!(format!("{:032b}", to_decimal("255.255.253.0")));
-
 
     // let mut router = Router::new("127.0.0.1:5005".to_string()).unwrap();
     // router.register_neighbor("192.168.0.2", "63456", router::NeighborType::Cust);
