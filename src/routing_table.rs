@@ -1,46 +1,48 @@
 use crate::ipv4::{self, apply_mask, apply_mask_prefix, netmask_digit, to_decimal, to_ipv4};
+use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Serialize, Deserialize)]
 pub enum Origin {
-    Igp = 3,
-    Egp = 2,
-    Unk = 1,
+    IGP = 3,
+    EGP = 2,
+    UNK = 1,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Network {
     peer: String,
-    net_prefix: String,
+    network: String,
     netmask: String,
     localpref: i32,
-    self_origin: bool,
-    as_path: Vec<i32>,
+    selfOrigin: bool,
+    ASPath: Vec<i32>,
     origin: Origin,
 }
 
 impl Network {
     pub fn new(
         peer: String,
-        net_prefix: String,
+        network: String,
         netmask: String,
         localpref: i32,
-        self_origin: bool,
-        as_path: Vec<i32>,
+        selfOrigin: bool,
+        ASPath: Vec<i32>,
         origin: Origin,
     ) -> Self {
         Network {
             peer,
-            net_prefix,
+            network,
             netmask,
             localpref,
-            self_origin,
-            as_path,
+            selfOrigin,
+            ASPath,
             origin,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Table {
     table: Vec<Network>,
 }
@@ -60,6 +62,10 @@ impl Table {
         self.table.push(new_net)
     }
 
+    pub fn get_table(&self) -> &Vec<Network> {
+        &self.table
+    }
+
     fn aggregate(&mut self, network: Network) -> Option<Network> {
         match (0..self.table.len())
             .into_iter()
@@ -68,14 +74,14 @@ impl Table {
             Some(ind) => {
                 let net = self.table.remove(ind);
                 let new_netmask = to_ipv4(to_decimal(&net.netmask) << 1);
-                let new_net_prefix = to_ipv4(apply_mask(&net.net_prefix, &new_netmask));
+                let new_net_prefix = to_ipv4(apply_mask(&net.network, &new_netmask));
                 let aggregated_net = Network::new(
                     net.peer,
                     new_net_prefix,
                     new_netmask,
                     net.localpref,
-                    net.self_origin,
-                    net.as_path,
+                    net.selfOrigin,
+                    net.ASPath,
                     net.origin,
                 );
                 Some(aggregated_net)
@@ -101,11 +107,11 @@ impl Table {
         }
 
         // Check if AS paths are same
-        if net1.as_path != net2.as_path {
+        if net1.ASPath != net2.ASPath {
             return false;
         }
 
-        if net1.self_origin != net2.self_origin {
+        if net1.selfOrigin != net2.selfOrigin {
             return false;
         }
 
@@ -115,8 +121,8 @@ impl Table {
         }
 
         // Check if these two networks are numerically adjacent
-        if apply_mask_prefix(&net1.net_prefix, &net1.netmask)
-            .abs_diff(apply_mask_prefix(&net2.net_prefix, &net2.netmask))
+        if apply_mask_prefix(&net1.network, &net1.netmask)
+            .abs_diff(apply_mask_prefix(&net2.network, &net2.netmask))
             != 1
         {
             return false;
