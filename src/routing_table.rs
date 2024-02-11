@@ -1,4 +1,4 @@
-use crate::ipv4::{self, apply_mask, apply_mask_prefix, netmask_digit, to_decimal, to_ipv4};
+use crate::{ipv4::{self, apply_mask, apply_mask_prefix, check_match, netmask_digit, to_decimal, to_ipv4}, router::GLOBAL_TABLE};
 use serde::{Deserialize, Serialize};
 
 
@@ -64,6 +64,67 @@ impl Table {
 
     pub fn get_table(&self) -> &Vec<Network> {
         &self.table
+    }
+
+    pub fn best_route(dst: &str) -> Result<String, String> {
+        let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table (best_route)"))?;
+        let mut candidate = Network::new("0".to_string(), "0.0.0.0".to_string(), "0.0.0.0".to_string(), 0, false, vec![], Origin::UNK);
+        let mut longest_prefix = 0;
+
+        for net in table.table.iter() {
+            // let (network, netmask) = (net.network, net.netmask);
+            if check_match(&net.network, &net.netmask, dst) {
+                let prefix_length = netmask_digit(&net.netmask);
+                if prefix_length > longest_prefix {
+                    candidate = net.clone();
+                    longest_prefix = prefix_length;
+                } else if prefix_length == longest_prefix {
+                    // Check localpref
+                    if candidate.localpref > net.localpref {
+                        continue;
+                    } else if candidate.localpref < net.localpref {
+                        candidate = net.clone();
+                        continue;
+                    }
+
+                    // Check selfOrigin
+                    if candidate.selfOrigin != net.selfOrigin {
+                        if candidate.selfOrigin {
+                            continue;
+                        } else {
+                            candidate = net.clone();
+                            continue;
+                        }
+                    }
+
+                    // Check ASPath
+                    if candidate.ASPath.len() > net.ASPath.len() {
+                        candidate = net.clone();
+                        continue;
+                    } else if candidate.ASPath.len() < net.ASPath.len() {
+                        continue;
+                    }
+
+                    // Check origin
+                    if candidate.origin > net.origin {
+                        continue;
+                    } else if candidate.origin < net.origin {
+                        candidate = net.clone();
+                        continue;
+                    }
+
+                    if to_decimal(&candidate.peer) > to_decimal(&net.peer) {
+                        candidate = net.clone();
+                        continue;
+                    } else {
+                        continue;
+                    }
+                }
+                
+            }
+        }
+
+        Ok(candidate.peer)
     }
 
     fn aggregate(&mut self, network: Network) -> Option<Network> {

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Number, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::thread::scope;
 use std::{any::Any, net::UdpSocket};
 
 use crate::routing_table::{Network, Table};
@@ -196,6 +197,55 @@ impl Router {
                             "dump" => {
                                 let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
                                 Router::handle_dump_message(&json_obj, &socket, &table, &port)?;
+                            },
+                            "data" => {
+                                // let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
+                                match Table::best_route(&json_obj.dst) {
+                                    Ok(peer_ip) => {
+                                        let data_message = json!({
+                                            "src": json_obj.src,
+                                            "dst": json_obj.dst,
+                                            "type": "data",
+                                            "msg": json_obj.msg
+                                        });
+
+                                        let peer_port = router.ports.get(&peer_ip).unwrap();
+
+                                        match relation {
+                                            NeighborType::Cust => {
+                                                socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
+                                            },
+                                            _ => {
+                                                match router.relations.get(&peer_ip).unwrap() {
+                                                    NeighborType::Cust => {
+                                                        socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
+                                                    },
+                                                    _ => {
+                                                        let no_route_message = json!({
+                                                            "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
+                                                            "dst": json_obj.src,
+                                                            "type": "no route",
+                                                            "msg": {}
+                                                        });
+
+                                                        socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
+
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    Err(_) => {
+                                        let no_route_message = json!({
+                                            "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
+                                            "dst": json_obj.src,
+                                            "type": "no route",
+                                            "msg": {}
+                                        });
+
+                                        socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
+                                    }
+                                }
                             },
                             _ => {}
                         }
