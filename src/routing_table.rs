@@ -81,6 +81,7 @@ impl Table {
                 if prefix_length > longest_prefix {
                     candidate = net.clone();
                     longest_prefix = prefix_length;
+                    // should we do continue here?
                 } else if prefix_length == longest_prefix {
                     // Check localpref
                     if candidate.localpref > net.localpref {

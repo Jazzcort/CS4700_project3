@@ -50,9 +50,11 @@ lazy_static! {
         ports: HashMap::new(),
         relations: HashMap::new(),
     });
-    
+    // Create neighbor vector for storing all the neighbors
     pub static ref GLOBAL_PEER: Mutex<Vec<String>> = Mutex::new(vec![]);
 
+    // Create a globally accessible `Table` instance wrapped in a `Mutex` for thread safe mutable access.
+    // During the BGP process, the router will 'update' this table with new routes and use it to make routing decisions.
     pub static ref GLOBAL_TABLE: Mutex<Table> = Mutex::new(Table::new());
 }
 
@@ -157,7 +159,7 @@ impl Router {
                         match json_obj.r#type.as_str() {
                             // If the message received is type "update"
                             "update" => {
-                                Self::handle_update_message(&mut json_obj, &router, &socket, asn, ip_addr, port)?;
+                                Router::handle_update_message(&mut json_obj, &router, &socket, asn, ip_addr, port)?;
                                 // dbg!(&table);
                                 
                             },
@@ -167,52 +169,8 @@ impl Router {
                             },
                             "data" => {
                                 // let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
-                                match Table::best_route(&json_obj.dst) {
-                                    Ok(peer_ip) => {
-                                        let data_message = json!({
-                                            "src": json_obj.src,
-                                            "dst": json_obj.dst,
-                                            "type": "data",
-                                            "msg": json_obj.msg
-                                        });
-
-                                        let peer_port = router.ports.get(&peer_ip).unwrap();
-
-                                        match relation {
-                                            NeighborType::Cust => {
-                                                socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
-                                            },
-                                            _ => {
-                                                match router.relations.get(&peer_ip).unwrap() {
-                                                    NeighborType::Cust => {
-                                                        socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
-                                                    },
-                                                    _ => {
-                                                        let no_route_message = json!({
-                                                            "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
-                                                            "dst": json_obj.src,
-                                                            "type": "no route",
-                                                            "msg": {}
-                                                        });
-
-                                                        socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
-
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    },
-                                    Err(_) => {
-                                        let no_route_message = json!({
-                                            "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
-                                            "dst": json_obj.src,
-                                            "type": "no route",
-                                            "msg": {}
-                                        });
-
-                                        socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
-                                    }
-                                }
+                                // Here, we check if we can find the best route in the table
+                                Router::handle_data_message(&json_obj, &router, &socket, ip_addr, &relation, port)?;
                             },
                             _ => {}
                         }
@@ -322,6 +280,67 @@ impl Router {
                 }
             }
 
+        }
+        Ok(())
+    }
+
+    /// Processes and forwards "data" messages according to BGP policies.
+    /// # Arguments
+    /// * `json_obj` - A reference to the received "data" message.
+    /// * `router` - A reference to the global router instance containing the routing table and other configurations.
+    /// * `socket` - A mutable reference to the UDP socket for sending the response.
+    /// * `ip_addr` - The IP address of the neighbor that sent the "data" message.
+    /// * `relation` - The relationship type of the neighbor that sent the "data" message.
+    /// * `port` - The port of the neighbor that sent the "data" message.
+    fn handle_data_message(json_obj: & Message, router: &Router, socket: &UdpSocket, ip_addr: &str, relation: &NeighborType, port: &str) -> Result<(), String> {
+        // We check if we can find the best route in the table
+        match Table::best_route(&json_obj.dst) {
+            Ok(peer_ip) => {
+                let data_message = json!({
+                    "src": json_obj.src,
+                    "dst": json_obj.dst,
+                    "type": "data",
+                    "msg": json_obj.msg
+                });
+                // Port that we will send the message to
+                let peer_port = router.ports.get(&peer_ip).unwrap();
+
+                match relation {
+                    // If source is my customer, I will forward to everyone
+                    NeighborType::Cust => {
+                        socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
+                    },
+                    _ => {
+                        // If source is not my customer, I will only forward your announcement to my customer
+                        match router.relations.get(&peer_ip).unwrap() {
+                            NeighborType::Cust => {
+                                socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
+                            },
+                            _ => {
+                                let no_route_message = json!({
+                                    "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
+                                    "dst": json_obj.src,
+                                    "type": "no route",
+                                    "msg": {}
+                                });
+
+                                socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
+
+                            }
+                        }
+                    }
+                }
+            },
+            Err(_) => {
+                let no_route_message = json!({
+                    "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
+                    "dst": json_obj.src,
+                    "type": "no route",
+                    "msg": {}
+                });
+
+                socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
+            }
         }
         Ok(())
     }
