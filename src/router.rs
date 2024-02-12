@@ -42,17 +42,19 @@ pub struct Router {
     relations: HashMap<String, NeighborType>                   
 }
 
-// Create a globally accessible `Router` instance wrapped in a `Mutex` for thread safe mutable access.
 lazy_static! {
+    // Create a globally accessible `Router` instance wrapped in a `Mutex` for thread safe mutable access.
     pub static ref GLOBAL_ROUTER: Mutex<Router> = Mutex::new(Router {
         asn: 0,
         sockets: HashMap::new(),
         ports: HashMap::new(),
         relations: HashMap::new(),
     });
-    
+    // Create neighbor vector for storing all the neighbors
     pub static ref GLOBAL_PEER: Mutex<Vec<String>> = Mutex::new(vec![]);
 
+    // Create a globally accessible `Table` instance wrapped in a `Mutex` for thread safe mutable access.
+    // During the BGP process, the router will 'update' this table with new routes and use it to make routing decisions.
     pub static ref GLOBAL_TABLE: Mutex<Table> = Mutex::new(Table::new());
 }
 
@@ -137,10 +139,11 @@ impl Router {
         loop {
             // Iterate through all the neighbors
             for ip_addr in peers.iter() {
-                let (socket, port, relation) = (
+                let ( socket, port, relation, asn) = (
                     router.sockets.get(ip_addr).unwrap(),
                     router.ports.get(ip_addr).unwrap(),
                     router.relations.get(ip_addr).unwrap(),
+                    router.asn,
                 );
                
                // Listen to any incoming message
@@ -156,42 +159,8 @@ impl Router {
                         match json_obj.r#type.as_str() {
                             // If the message received is type "update"
                             "update" => {
-                                // Create new ASPath array
-                                let mut table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
-                                let mut new_arr: Vec<Value> = vec![json!(router.asn.clone())];
-                                if let Value::Array(arr) = json_obj.msg["ASPath"].clone() {
-                                    for val in arr.iter() {
-                                        new_arr.push(val.clone());
-                                    }
-                                }
-
-                                json_obj.msg["peer"] = json!(ip_addr);
-                                let net: Network = serde_json::from_str(&json_obj.msg.to_string()).unwrap();
-                                table.update(net);
-
-                                for (nei_ip, nei_port) in router.ports.iter() {
-                                    // Send the "update" message to every neighbor except the origin
-                                    if nei_ip != ip_addr {
-                                        // Customize update message
-                                        let update_msg = json!({
-                                            "src": format!("{}{}", &nei_ip[..nei_ip.len() - 1], "1"),
-                                            "dst": nei_ip,
-                                            "type": "update",
-                                            "msg": {
-                                                "network": &json_obj.msg["network"],
-                                                "netmask": &json_obj.msg["netmask"],
-                                                // "localpref": &json_obj.msg["localpref"],
-                                                "ASPath": json!(new_arr),
-                                                // "origin": &json_obj.msg["origin"],
-                                                // "selfOrigin": &json_obj.msg["selfOrigin"]
-                                            }
-                                            
-                                        });
-                                        socket.send_to(update_msg.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{port}"))?;
-                                    }
-                                    
-                                }
-                                dbg!(&table);
+                                Router::handle_update_message(&mut json_obj, &router, &socket, asn, ip_addr, port)?;
+                                // dbg!(&table);
                                 
                             },
                             "dump" => {
@@ -200,52 +169,8 @@ impl Router {
                             },
                             "data" => {
                                 // let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
-                                match Table::best_route(&json_obj.dst) {
-                                    Ok(peer_ip) => {
-                                        let data_message = json!({
-                                            "src": json_obj.src,
-                                            "dst": json_obj.dst,
-                                            "type": "data",
-                                            "msg": json_obj.msg
-                                        });
-
-                                        let peer_port = router.ports.get(&peer_ip).unwrap();
-
-                                        match relation {
-                                            NeighborType::Cust => {
-                                                socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
-                                            },
-                                            _ => {
-                                                match router.relations.get(&peer_ip).unwrap() {
-                                                    NeighborType::Cust => {
-                                                        socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
-                                                    },
-                                                    _ => {
-                                                        let no_route_message = json!({
-                                                            "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
-                                                            "dst": json_obj.src,
-                                                            "type": "no route",
-                                                            "msg": {}
-                                                        });
-
-                                                        socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
-
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    },
-                                    Err(_) => {
-                                        let no_route_message = json!({
-                                            "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
-                                            "dst": json_obj.src,
-                                            "type": "no route",
-                                            "msg": {}
-                                        });
-
-                                        socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
-                                    }
-                                }
+                                // Here, we check if we can find the best route in the table
+                                Router::handle_data_message(&json_obj, &router, &socket, ip_addr, &relation, port)?;
                             },
                             _ => {}
                         }
@@ -267,6 +192,158 @@ impl Router {
         return Err(format!("Data incomplete"));
     }
 
+    /// Processes and forwards "update" messages according to BGP policies.
+    /// # Arguments
+    /// * `json_obj` - A mutable reference to the received "update" message.
+    /// * `router` - A reference to the global router instance containing the routing table and other configurations.
+    /// * `socket` - A mutable reference to the UDP socket for sending the response.
+    /// * `asn` - The local AS number.
+    /// * `ip_addr` - The IP address of the neighbor that sent the "update" message.
+    /// * `port` - The port of the neighbor that sent the "update" message.
+    fn handle_update_message(
+        json_obj: &mut Message,
+        router: &Router,
+        socket: & UdpSocket, // local socket for sending messages
+        asn: u8, // local AS number
+        ip_addr: &str, // neighbor ip address
+        port: &str, // neighbor port
+    ) -> Result<(), String> {
+        // Create new ASPath array
+        let mut new_arr: Vec<Value> = vec![json!(asn.clone())];
+        if let Value::Array(arr) = json_obj.msg["ASPath"].clone() {
+            for val in arr.iter() {
+                new_arr.push(val.clone());
+            }
+        }
+        // Include peer in the message for table row update
+        json_obj.msg["peer"] = json!(ip_addr);
+        // Get global table for updating
+        let mut table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
+        // Update the table
+        let net: Network = serde_json::from_str(&json_obj.msg.to_string()).unwrap();
+        table.update(net);
+
+        // Logic for forwarding the announcement
+        // Decide who to forward the announcement to
+        match router.relations[ip_addr] {
+            // If sender is my customer, I will forward to everyone 
+            NeighborType::Cust => {
+                for (nei_ip, nei_port) in router.ports.iter() {
+                    // Send the "update" message to every neighbor except the origin
+                    if nei_ip != ip_addr {
+                        // Customize update message
+                        let update_msg = json!({
+                            "src": format!("{}{}", &nei_ip[..nei_ip.len() - 1], "1"),
+                            "dst": nei_ip,
+                            "type": "update",
+                            "msg": {
+                                "network": &json_obj.msg["network"],
+                                "netmask": &json_obj.msg["netmask"],
+                                "ASPath": json!(new_arr),
+                            }
+                            
+                        });
+                        socket.send_to(update_msg.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{port}"))?;
+
+                    }
+                    
+                }
+            }
+            // If sender is not my customer, I will only forward your announcement to my customer
+            _ => {
+                for (nei_ip, nei_port) in router.ports.iter() {
+                    // Send the "update" message to every neighbor except the origin
+                    if nei_ip != ip_addr {
+                        // Forward announcement only to my customer
+                        match router.relations[nei_ip] {
+                            NeighborType::Cust => {
+                                // Customize update message
+                                let update_msg = json!({
+                                    "src": format!("{}{}", &nei_ip[..nei_ip.len() - 1], "1"),
+                                    "dst": nei_ip,
+                                    "type": "update",
+                                    "msg": {
+                                        "network": &json_obj.msg["network"],
+                                        "netmask": &json_obj.msg["netmask"],
+                                        "ASPath": json!(new_arr),
+                                    }
+                                    
+                                });
+                                socket.send_to(update_msg.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{port}"))?;
+                            }
+                            // Do nothing, if the neighbor is not my customer
+                            _ => {}
+                        }
+
+                    }
+                    
+                }
+            }
+
+        }
+        Ok(())
+    }
+
+    /// Processes and forwards "data" messages according to BGP policies.
+    /// # Arguments
+    /// * `json_obj` - A reference to the received "data" message.
+    /// * `router` - A reference to the global router instance containing the routing table and other configurations.
+    /// * `socket` - A mutable reference to the UDP socket for sending the response.
+    /// * `ip_addr` - The IP address of the neighbor that sent the "data" message.
+    /// * `relation` - The relationship type of the neighbor that sent the "data" message.
+    /// * `port` - The port of the neighbor that sent the "data" message.
+    fn handle_data_message(json_obj: & Message, router: &Router, socket: &UdpSocket, ip_addr: &str, relation: &NeighborType, port: &str) -> Result<(), String> {
+        // We check if we can find the best route in the table
+        match Table::best_route(&json_obj.dst) {
+            Ok(peer_ip) => {
+                let data_message = json!({
+                    "src": json_obj.src,
+                    "dst": json_obj.dst,
+                    "type": "data",
+                    "msg": json_obj.msg
+                });
+                // Port that we will send the message to
+                let peer_port = router.ports.get(&peer_ip).unwrap();
+
+                match relation {
+                    // If source is my customer, I will forward to everyone
+                    NeighborType::Cust => {
+                        socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
+                    },
+                    _ => {
+                        // If source is not my customer, I will only forward your announcement to my customer
+                        match router.relations.get(&peer_ip).unwrap() {
+                            NeighborType::Cust => {
+                                socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
+                            },
+                            _ => {
+                                let no_route_message = json!({
+                                    "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
+                                    "dst": json_obj.src,
+                                    "type": "no route",
+                                    "msg": {}
+                                });
+
+                                socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
+
+                            }
+                        }
+                    }
+                }
+            },
+            Err(_) => {
+                let no_route_message = json!({
+                    "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
+                    "dst": json_obj.src,
+                    "type": "no route",
+                    "msg": {}
+                });
+
+                socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
+            }
+        }
+        Ok(())
+    }
 
     /// Handles a "dump" message received from a neighbor and responds with a "table" message.
     /// This "table" message contains a copy of the current routing table.

@@ -54,11 +54,14 @@ impl Table {
 
     pub fn update(&mut self, mut new_net: Network) {
         loop {
+            // Whenever we want to add the new row into table,
+            // we aggregate as much as possible
             match self.aggregate(new_net.clone()) {
                 Some(n) => new_net = n,
                 None => break,
             }
         }
+        // Add aggregated row into the table
         self.table.push(new_net)
     }
 
@@ -78,6 +81,7 @@ impl Table {
                 if prefix_length > longest_prefix {
                     candidate = net.clone();
                     longest_prefix = prefix_length;
+                    // should we do continue here?
                 } else if prefix_length == longest_prefix {
                     // Check localpref
                     if candidate.localpref > net.localpref {
