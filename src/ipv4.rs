@@ -58,6 +58,23 @@ pub fn netmask_digit(mask: &str) -> i32 {
     b_str.bytes().filter(|&x| x == b'1').count() as i32
 }
 
+pub fn netnask_increase(mask: &str) -> String {
+    let digits = netmask_digit(mask);
+    let mask_deci = to_decimal(mask);
+
+    to_ipv4(mask_deci + (1 << (31 - digits)))
+}
+
+pub fn divide_prefix(prefix: &str, mask: &str) -> (String, String) {
+    if apply_mask_prefix(prefix, mask) % 2 == 0 {
+        let divided_prefix = to_ipv4(to_decimal(prefix) + (1 << (32 - netmask_digit(mask))));
+        return (prefix.to_string(), divided_prefix.to_string());
+    } 
+    
+    let divided_prefix = to_ipv4(to_decimal(prefix) - (1 << (32 - netmask_digit(mask)))); 
+    (divided_prefix.to_string(), prefix.to_string())
+}
+
 // Compare target prefix with the network prefix after applying the netmask.
 pub fn check_match(prefix: &str, netmask: &str, network: &str) -> bool {
     let prefix_deci = to_decimal(prefix);
