@@ -1,6 +1,11 @@
-use crate::{ipv4::{self, apply_mask, apply_mask_prefix, check_match, netmask_digit, to_decimal, to_ipv4}, router::GLOBAL_TABLE};
+use crate::{
+    ipv4::{
+        self, apply_mask, apply_mask_prefix, check_match, divide_prefix, netmask_digit,
+        netnask_increase, to_decimal, to_ipv4,
+    },
+    router::GLOBAL_TABLE,
+};
 use serde::{Deserialize, Serialize};
-
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Serialize, Deserialize)]
 pub enum Origin {
@@ -65,13 +70,98 @@ impl Table {
         self.table.push(new_net)
     }
 
+    /**
+     * This function withdraw the given network from the routing table
+     */
+    pub fn withdraw(&mut self, network: &str, netmask: &str, peer: &str) {
+        while self.disaggregate(network, netmask, peer) {}
+    }
+
+    /**
+     * This function apply disaggregate mechanism to the routing table
+     * return true if successfully disaggregate something, 
+     * false if nothing gets disaggregate.
+     */
+    pub fn disaggregate(&mut self, network: &str, netmask: &str, peer: &str) -> bool {
+        match (0..self.table.len()).into_iter().find(|ind| {
+            self.table[*ind].peer == peer
+                && check_match(
+                    &self.table[*ind].network,
+                    &self.table[*ind].netmask,
+                    network,
+                )
+        }) {
+            Some(ind) => {
+                let mut net = self.table.remove(ind);
+                while netmask_digit(&net.netmask) < netmask_digit(netmask) {
+                    let new_netmask = netnask_increase(&net.netmask);
+                    let (divided_net1, divided_net2) = divide_prefix(&net.network, &new_netmask);
+                    dbg!(&divided_net1, &divided_net2);
+                    if check_match(&divided_net1, &new_netmask, network) {
+                        self.update(Network::new(
+                            peer.to_string(),
+                            divided_net2,
+                            new_netmask.clone(),
+                            net.localpref.clone(),
+                            net.selfOrigin.clone(),
+                            net.ASPath.clone(),
+                            net.origin.clone(),
+                        ));
+
+                        net = Network::new(
+                            peer.to_string(),
+                            divided_net1,
+                            new_netmask,
+                            net.localpref.clone(),
+                            net.selfOrigin.clone(),
+                            net.ASPath.clone(),
+                            net.origin.clone(),
+                        );
+                    } else {
+                        self.update(Network::new(
+                            peer.to_string(),
+                            divided_net1,
+                            new_netmask.clone(),
+                            net.localpref.clone(),
+                            net.selfOrigin.clone(),
+                            net.ASPath.clone(),
+                            net.origin.clone(),
+                        ));
+
+                        net = Network::new(
+                            peer.to_string(),
+                            divided_net2,
+                            new_netmask,
+                            net.localpref.clone(),
+                            net.selfOrigin.clone(),
+                            net.ASPath.clone(),
+                            net.origin.clone(),
+                        );
+                    }
+                }
+                true
+            }
+            None => {false}
+        }
+    }
+
     pub fn get_table(&self) -> &Vec<Network> {
         &self.table
     }
 
     pub fn best_route(dst: &str) -> Result<String, String> {
-        let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table (best_route)"))?;
-        let mut candidate = Network::new("0".to_string(), "0.0.0.0".to_string(), "0.0.0.0".to_string(), 0, false, vec![], Origin::UNK);
+        let table = GLOBAL_TABLE
+            .lock()
+            .map_err(|e| format!("{e} -> failed to lock the table (best_route)"))?;
+        let mut candidate = Network::new(
+            "0".to_string(),
+            "0.0.0.0".to_string(),
+            "0.0.0.0".to_string(),
+            0,
+            false,
+            vec![],
+            Origin::UNK,
+        );
         let mut longest_prefix = 0;
 
         for net in table.table.iter() {
@@ -124,7 +214,6 @@ impl Table {
                         continue;
                     }
                 }
-                
             }
         }
 

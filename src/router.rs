@@ -39,7 +39,7 @@ pub struct Router {
     /// Maps neighbor IP addresses to their relationship type with this router.
     /// The relationship can be one of Peer, Customer (Cust), or Provider (Prov),
     /// and affects routing decisions and policy.
-    relations: HashMap<String, NeighborType>                   
+    relations: HashMap<String, NeighborType>,
 }
 
 lazy_static! {
@@ -65,7 +65,6 @@ struct Message {
     r#type: String,
     msg: Value,
 }
-
 
 impl Router {
     // Creates a new Router instance
@@ -97,9 +96,13 @@ impl Router {
 
         router.asn = asn;
         router.sockets.insert(neighbor_addr.to_string(), udp_socket);
-        router.ports.insert(neighbor_addr.to_string(), neighbor_port.to_string());
+        router
+            .ports
+            .insert(neighbor_addr.to_string(), neighbor_port.to_string());
         router.relations.insert(neighbor_addr.to_string(), relation);
-        let mut peers = GLOBAL_PEER.lock().map_err(|e| format!("{e} -> failed to lock peer vector"))?;
+        let mut peers = GLOBAL_PEER
+            .lock()
+            .map_err(|e| format!("{e} -> failed to lock peer vector"))?;
         peers.push(neighbor_addr.to_string());
 
         Ok(())
@@ -115,7 +118,9 @@ impl Router {
             .lock()
             .map_err(|e| format!("Failed to lock router: {}", e))?;
 
-        let peers = GLOBAL_PEER.lock().map_err(|e| format!("{e} -> failed to lock peer vector"))?;
+        let peers = GLOBAL_PEER
+            .lock()
+            .map_err(|e| format!("{e} -> failed to lock peer vector"))?;
 
         dbg!(&router);
 
@@ -139,14 +144,14 @@ impl Router {
         loop {
             // Iterate through all the neighbors
             for ip_addr in peers.iter() {
-                let ( socket, port, relation, asn) = (
+                let (socket, port, relation, asn) = (
                     router.sockets.get(ip_addr).unwrap(),
                     router.ports.get(ip_addr).unwrap(),
                     router.relations.get(ip_addr).unwrap(),
                     router.asn,
                 );
-               
-               // Listen to any incoming message
+
+                // Listen to any incoming message
                 match socket.recv(&mut buf) {
                     Ok(_) => {
                         let msg = Router::read_to_string(&mut buf)?;
@@ -159,19 +164,29 @@ impl Router {
                         match json_obj.r#type.as_str() {
                             // If the message received is type "update"
                             "update" => {
-                                Router::handle_update_message(&mut json_obj, &router, &socket, asn, ip_addr, port)?;
+                                Router::handle_update_message(
+                                    &mut json_obj,
+                                    &router,
+                                    &socket,
+                                    asn,
+                                    ip_addr,
+                                    port,
+                                )?;
                                 // dbg!(&table);
-                                
-                            },
+                            }
                             "dump" => {
-                                let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
+                                let table = GLOBAL_TABLE
+                                    .lock()
+                                    .map_err(|e| format!("{e} -> failed to lock the table"))?;
                                 Router::handle_dump_message(&json_obj, &socket, &table, &port)?;
-                            },
+                            }
                             "data" => {
                                 // let table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
                                 // Here, we check if we can find the best route in the table
-                                Router::handle_data_message(&json_obj, &router, &socket, ip_addr, &relation, port)?;
-                            },
+                                Router::handle_data_message(
+                                    &json_obj, &router, &socket, ip_addr, &relation, port,
+                                )?;
+                            }
                             _ => {}
                         }
                     }
@@ -203,10 +218,10 @@ impl Router {
     fn handle_update_message(
         json_obj: &mut Message,
         router: &Router,
-        socket: & UdpSocket, // local socket for sending messages
-        asn: u8, // local AS number
-        ip_addr: &str, // neighbor ip address
-        port: &str, // neighbor port
+        socket: &UdpSocket, // local socket for sending messages
+        asn: u8,            // local AS number
+        ip_addr: &str,      // neighbor ip address
+        port: &str,         // neighbor port
     ) -> Result<(), String> {
         // Create new ASPath array
         let mut new_arr: Vec<Value> = vec![json!(asn.clone())];
@@ -218,7 +233,9 @@ impl Router {
         // Include peer in the message for table row update
         json_obj.msg["peer"] = json!(ip_addr);
         // Get global table for updating
-        let mut table = GLOBAL_TABLE.lock().map_err(|e| format!("{e} -> failed to lock the table"))?;
+        let mut table = GLOBAL_TABLE
+            .lock()
+            .map_err(|e| format!("{e} -> failed to lock the table"))?;
         // Update the table
         let net: Network = serde_json::from_str(&json_obj.msg.to_string()).unwrap();
         table.update(net);
@@ -226,7 +243,7 @@ impl Router {
         // Logic for forwarding the announcement
         // Decide who to forward the announcement to
         match router.relations[ip_addr] {
-            // If sender is my customer, I will forward to everyone 
+            // If sender is my customer, I will forward to everyone
             NeighborType::Cust => {
                 for (nei_ip, nei_port) in router.ports.iter() {
                     // Send the "update" message to every neighbor except the origin
@@ -241,12 +258,10 @@ impl Router {
                                 "netmask": &json_obj.msg["netmask"],
                                 "ASPath": json!(new_arr),
                             }
-                            
+
                         });
                         socket.send_to(update_msg.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{port}"))?;
-
                     }
-                    
                 }
             }
             // If sender is not my customer, I will only forward your announcement to my customer
@@ -267,19 +282,16 @@ impl Router {
                                         "netmask": &json_obj.msg["netmask"],
                                         "ASPath": json!(new_arr),
                                     }
-                                    
+
                                 });
                                 socket.send_to(update_msg.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{port}"))?;
                             }
                             // Do nothing, if the neighbor is not my customer
                             _ => {}
                         }
-
                     }
-                    
                 }
             }
-
         }
         Ok(())
     }
@@ -292,7 +304,14 @@ impl Router {
     /// * `ip_addr` - The IP address of the neighbor that sent the "data" message.
     /// * `relation` - The relationship type of the neighbor that sent the "data" message.
     /// * `port` - The port of the neighbor that sent the "data" message.
-    fn handle_data_message(json_obj: & Message, router: &Router, socket: &UdpSocket, ip_addr: &str, relation: &NeighborType, port: &str) -> Result<(), String> {
+    fn handle_data_message(
+        json_obj: &Message,
+        router: &Router,
+        socket: &UdpSocket,
+        ip_addr: &str,
+        relation: &NeighborType,
+        port: &str,
+    ) -> Result<(), String> {
         // We check if we can find the best route in the table
         match Table::best_route(&json_obj.dst) {
             Ok(peer_ip) => {
@@ -308,14 +327,26 @@ impl Router {
                 match relation {
                     // If source is my customer, I will forward to everyone
                     NeighborType::Cust => {
-                        socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
-                    },
+                        socket
+                            .send_to(
+                                data_message.to_string().as_bytes(),
+                                format!("127.0.0.1:{}", peer_port),
+                            )
+                            .map_err(|e| format!("{e} -> failed to send the data message"))?;
+                    }
                     _ => {
                         // If source is not my customer, I will only forward your announcement to my customer
                         match router.relations.get(&peer_ip).unwrap() {
                             NeighborType::Cust => {
-                                socket.send_to(data_message.to_string().as_bytes(), format!("127.0.0.1:{}", peer_port)).map_err(|e| format!("{e} -> failed to send the data message"))?;
-                            },
+                                socket
+                                    .send_to(
+                                        data_message.to_string().as_bytes(),
+                                        format!("127.0.0.1:{}", peer_port),
+                                    )
+                                    .map_err(|e| {
+                                        format!("{e} -> failed to send the data message")
+                                    })?;
+                            }
                             _ => {
                                 let no_route_message = json!({
                                     "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
@@ -324,13 +355,19 @@ impl Router {
                                     "msg": {}
                                 });
 
-                                socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
-
+                                socket
+                                    .send_to(
+                                        no_route_message.to_string().as_bytes(),
+                                        format!("127.0.0.1:{}", port),
+                                    )
+                                    .map_err(|e| {
+                                        format!("{e} -> failed to send the no route message")
+                                    })?;
                             }
                         }
                     }
                 }
-            },
+            }
             Err(_) => {
                 let no_route_message = json!({
                     "src": format!("{}{}", &ip_addr[..ip_addr.len() - 1], "1"),
@@ -339,7 +376,12 @@ impl Router {
                     "msg": {}
                 });
 
-                socket.send_to(no_route_message.to_string().as_bytes(), format!("127.0.0.1:{}", port)).map_err(|e| format!("{e} -> failed to send the no route message"))?;
+                socket
+                    .send_to(
+                        no_route_message.to_string().as_bytes(),
+                        format!("127.0.0.1:{}", port),
+                    )
+                    .map_err(|e| format!("{e} -> failed to send the no route message"))?;
             }
         }
         Ok(())
@@ -354,7 +396,12 @@ impl Router {
     ///
     /// # Returns
     /// * `Result<(), String>` - Ok(()) if the response was successfully sent, or Err(String) with an error message if not.
-    pub fn handle_dump_message(message: &Message, socket: &UdpSocket, table: &Table, port: &str) -> Result<(), String> {
+    pub fn handle_dump_message(
+        message: &Message,
+        socket: &UdpSocket,
+        table: &Table,
+        port: &str,
+    ) -> Result<(), String> {
         // Generate response to send back to the sender
         dbg!(&message.dst);
         dbg!(&table.clone());
@@ -364,11 +411,12 @@ impl Router {
             "type": "table",
             "msg": json!(table.get_table().clone()) // Copy rounting table from global router
         });
-        
-        // Find the correct port to send it back
-   
-        socket.send_to(response.to_string().as_bytes(), format!("127.0.0.1:{port}")).map_err(|e| format!("Failed to send table message: {}", e))?;
 
+        // Find the correct port to send it back
+
+        socket
+            .send_to(response.to_string().as_bytes(), format!("127.0.0.1:{port}"))
+            .map_err(|e| format!("Failed to send table message: {}", e))?;
 
         Ok(())
     }
