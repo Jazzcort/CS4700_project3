@@ -58,6 +58,7 @@ impl Table {
     }
 
     pub fn update(&mut self, mut new_net: Network) {
+        self.withdraw(&new_net.network, &new_net.netmask, &new_net.peer);
         loop {
             // Whenever we want to add the new row into table,
             // we aggregate as much as possible
