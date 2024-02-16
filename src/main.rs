@@ -49,7 +49,7 @@ fn main() {
         }
     }
 
-    // Router::start_router();
+    Router::start_router();
 
 
     // Test withdraw function
