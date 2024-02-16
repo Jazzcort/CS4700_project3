@@ -49,7 +49,7 @@ fn main() {
         }
     }
 
-    Router::start_router();
+    // Router::start_router();
 
 
     // Test withdraw function
@@ -97,11 +97,29 @@ fn main() {
 
     // dbg!(t.get_table());
 
-    // t.withdraw("192.168.2.0", "255.255.255.0", "192.168.0.2");
+    // // t.withdraw("192.168.2.0", "255.255.255.0", "192.168.0.2");
+    // t.update(Network::new(
+    //     "192.168.0.2".to_string(),
+    //     "192.168.2.0".to_string(),
+    //     "255.255.255.0".to_string(),
+    //     100,
+    //     false,
+    //     vec![1],
+    //     Origin::EGP,
+    // ));
 
     // dbg!(t.get_table());
 
-    // t.withdraw("192.168.0.0", "255.255.255.0", "192.168.0.2");
+    // // t.withdraw("192.168.0.0", "255.255.255.0", "192.168.0.2");
+    // t.update(Network::new(
+    //     "192.168.0.2".to_string(),
+    //     "192.168.0.0".to_string(),
+    //     "255.255.255.0".to_string(),
+    //     100,
+    //     true,
+    //     vec![23,1],
+    //     Origin::EGP,
+    // ));
 
     // dbg!(t.get_table());
 }
