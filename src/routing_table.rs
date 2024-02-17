@@ -1,3 +1,5 @@
+/// This module contains the implementation of the routing table
+/// and the network struct.
 use crate::{
     ipv4::{
         self, apply_mask, apply_mask_prefix, check_match, divide_prefix, netmask_digit,
@@ -7,6 +9,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+/// This enum represents the origin of the network
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Serialize, Deserialize)]
 pub enum Origin {
     IGP = 3,
@@ -14,6 +17,7 @@ pub enum Origin {
     UNK = 1,
 }
 
+/// This struct represents the network
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Network {
     peer: String,
@@ -47,6 +51,7 @@ impl Network {
     }
 }
 
+/// This struct represents the routing table
 #[derive(Debug, Clone, Serialize)]
 pub struct Table {
     table: Vec<Network>,
@@ -57,6 +62,9 @@ impl Table {
         Table { table: vec![] }
     }
 
+    /**
+     * This function update the routing table with the new network
+     */
     pub fn update(&mut self, mut new_net: Network) {
         self.withdraw(&new_net.network, &new_net.netmask, &new_net.peer);
         loop {
@@ -150,6 +158,9 @@ impl Table {
         &self.table
     }
 
+    /**
+     * This function returns the best route to the given destination
+     */
     pub fn best_route(dst: &str) -> Result<String, String> {
         let table = GLOBAL_TABLE
             .lock()
@@ -221,6 +232,11 @@ impl Table {
         Ok(candidate.peer)
     }
 
+    /**
+     * This function apply aggregate mechanism to the routing table
+     * return Some(Network) if successfully aggregate something, 
+     * None if nothing gets aggregated.
+     */
     fn aggregate(&mut self, network: Network) -> Option<Network> {
         match (0..self.table.len())
             .into_iter()
@@ -245,6 +261,9 @@ impl Table {
         }
     }
 
+    /**
+     * This function checks if the given networks are aggregable
+     */
     fn is_aggregable(net1: &Network, net2: &Network) -> bool {
         // Check if netmasks are same
         if net1.netmask != net2.netmask {
