@@ -1,6 +1,5 @@
 use clap::{Parser, ValueEnum};
 use std::net::UdpSocket;
-
 use router::{Router, GLOBAL_ROUTER, GLOBAL_TABLE};
 use serde_json::Value;
 
@@ -49,77 +48,6 @@ fn main() {
         }
     }
 
+    // Start the router.
     Router::start_router();
-
-
-    // Test withdraw function
-    // let mut t = GLOBAL_TABLE.lock().unwrap();
-
-    // t.update(Network::new(
-    //     "192.168.0.2".to_string(),
-    //     "192.168.0.0".to_string(),
-    //     "255.255.255.0".to_string(),
-    //     100,
-    //     true,
-    //     vec![1],
-    //     Origin::EGP,
-    // ));
-
-    // t.update(Network::new(
-    //     "192.168.0.2".to_string(),
-    //     "192.168.1.0".to_string(),
-    //     "255.255.255.0".to_string(),
-    //     100,
-    //     true,
-    //     vec![1],
-    //     Origin::EGP,
-    // ));
-
-    // t.update(Network::new(
-    //     "192.168.0.2".to_string(),
-    //     "192.168.2.0".to_string(),
-    //     "255.255.255.0".to_string(),
-    //     100,
-    //     true,
-    //     vec![1],
-    //     Origin::EGP,
-    // ));
-
-    // t.update(Network::new(
-    //     "192.168.0.2".to_string(),
-    //     "192.168.3.0".to_string(),
-    //     "255.255.255.0".to_string(),
-    //     100,
-    //     true,
-    //     vec![1],
-    //     Origin::EGP,
-    // ));
-
-    // dbg!(t.get_table());
-
-    // // t.withdraw("192.168.2.0", "255.255.255.0", "192.168.0.2");
-    // t.update(Network::new(
-    //     "192.168.0.2".to_string(),
-    //     "192.168.2.0".to_string(),
-    //     "255.255.255.0".to_string(),
-    //     100,
-    //     false,
-    //     vec![1],
-    //     Origin::EGP,
-    // ));
-
-    // dbg!(t.get_table());
-
-    // // t.withdraw("192.168.0.0", "255.255.255.0", "192.168.0.2");
-    // t.update(Network::new(
-    //     "192.168.0.2".to_string(),
-    //     "192.168.0.0".to_string(),
-    //     "255.255.255.0".to_string(),
-    //     100,
-    //     true,
-    //     vec![23,1],
-    //     Origin::EGP,
-    // ));
-
-    // dbg!(t.get_table());
 }

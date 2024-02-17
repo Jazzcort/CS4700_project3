@@ -58,6 +58,7 @@ pub fn netmask_digit(mask: &str) -> i32 {
     b_str.bytes().filter(|&x| x == b'1').count() as i32
 }
 
+// This function increases the netmask by one.
 pub fn netnask_increase(mask: &str) -> String {
     let digits = netmask_digit(mask);
     let mask_deci = to_decimal(mask);
@@ -65,6 +66,7 @@ pub fn netnask_increase(mask: &str) -> String {
     to_ipv4(mask_deci + (1 << (31 - digits)))
 }
 
+// This function divides the prefix into two parts.
 pub fn divide_prefix(prefix: &str, mask: &str) -> (String, String) {
     if apply_mask_prefix(prefix, mask) % 2 == 0 {
         let divided_prefix = to_ipv4(to_decimal(prefix) + (1 << (32 - netmask_digit(mask))));
