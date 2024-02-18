@@ -2,8 +2,8 @@
 /// and the network struct.
 use crate::{
     ipv4::{
-        apply_mask, apply_mask_prefix, check_match, divide_prefix, netmask_digit,
-        netnask_increase, to_decimal, to_ipv4,
+        apply_mask, apply_mask_prefix, check_match, divide_prefix, netmask_digit, netnask_increase,
+        to_decimal, to_ipv4,
     },
     router::GLOBAL_TABLE,
 };
@@ -90,7 +90,7 @@ impl Table {
 
     /**
      * This function apply disaggregate mechanism to the routing table
-     * return true if successfully disaggregate something, 
+     * return true if successfully disaggregate something,
      * false if nothing gets disaggregated.
      */
     pub fn disaggregate(&mut self, network: &str, netmask: &str, peer: &str) -> bool {
@@ -158,7 +158,7 @@ impl Table {
                 }
                 true
             }
-            None => {false}
+            None => false,
         }
     }
 
@@ -238,12 +238,16 @@ impl Table {
                 }
             }
         }
-        if longest_prefix != 0 { Ok(candidate.peer) } else { Err(format!("No route")) }
+        if longest_prefix != 0 {
+            Ok(candidate.peer)
+        } else {
+            Err(format!("No route"))
+        }
     }
 
     /**
      * This function apply aggregate mechanism to the routing table
-     * return Some(Network) if successfully aggregate something, 
+     * return Some(Network) if successfully aggregate something,
      * None if nothing gets aggregated.
      */
     fn aggregate(&mut self, network: Network) -> Option<Network> {

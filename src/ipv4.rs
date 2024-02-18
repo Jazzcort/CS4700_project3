@@ -11,7 +11,7 @@ lazy_static! {
  * to its decimal representation.
  * ip: The IP address in IPv4 format.
  * Return the decimal format of the given IP address
- */ 
+ */
 pub fn to_decimal(ip: &str) -> u32 {
     let cap = REGEX_IPV4.captures(ip).unwrap();
     let (quad1, quad2, quad3, quad4) = (
@@ -87,7 +87,7 @@ pub fn netmask_digit(mask: &str) -> i32 {
 }
 
 /**
- * This function transforms a given subnet mask in IPv4 format to another subnet mask in IPv4 format 
+ * This function transforms a given subnet mask in IPv4 format to another subnet mask in IPv4 format
  * whose digit format is increased by one.
  * i.g. 255.255.0.0 => 255.255.128.0
  * mask: A subnet mask in IPv4 format.
@@ -101,7 +101,7 @@ pub fn netnask_increase(mask: &str) -> String {
 }
 
 /**
- * This function divides the given network prefix into two sub-prefixes 
+ * This function divides the given network prefix into two sub-prefixes
  * of the same size using the provided netmask.
  * i.g. prefix: 192.168.128.0, mask: 255.255.224.0 => (192.168.128.0, 192.168.160.0)
  * prefix: An IPv4 address to be divided.
@@ -112,9 +112,9 @@ pub fn divide_prefix(prefix: &str, mask: &str) -> (String, String) {
     if apply_mask_prefix(prefix, mask) % 2 == 0 {
         let divided_prefix = to_ipv4(to_decimal(prefix) + (1 << (32 - netmask_digit(mask))));
         return (prefix.to_string(), divided_prefix.to_string());
-    } 
-    
-    let divided_prefix = to_ipv4(to_decimal(prefix) - (1 << (32 - netmask_digit(mask)))); 
+    }
+
+    let divided_prefix = to_ipv4(to_decimal(prefix) - (1 << (32 - netmask_digit(mask))));
     (divided_prefix.to_string(), prefix.to_string())
 }
 

@@ -19,8 +19,12 @@ fn main() {
     let cli = Cli::parse();
     // Assign AS number
     match Router::assign_asn(cli.asn) {
-        Ok(_) => {println!("Successfully assigned AS number")},
-        Err(e) => {println!("{}", format!("{} -> Failed to assign AS number", e))}
+        Ok(_) => {
+            println!("Successfully assigned AS number")
+        }
+        Err(e) => {
+            println!("{}", format!("{} -> Failed to assign AS number", e))
+        }
     }
     // Iterate over each neighbor specified in the command line arguments.
     for neighbor in &cli.neighbors {

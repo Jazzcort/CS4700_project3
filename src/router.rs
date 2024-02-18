@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::net::UdpSocket;
+use std::sync::Mutex;
 
 use crate::routing_table::{Network, Table};
-
 
 /// Represents the type of relationship with a neighbor.
 #[derive(Debug)]
@@ -74,7 +73,7 @@ impl Router {
     pub fn add_neighbor(
         neighbor_addr: &str,
         neighbor_port: &str,
-        neighbor_relation: &str
+        neighbor_relation: &str,
     ) -> Result<(), String> {
         // Lock the mutex here
         let mut router = GLOBAL_ROUTER
@@ -123,8 +122,6 @@ impl Router {
             .lock()
             .map_err(|e| format!("{e} -> failed to lock peer vector"))?;
 
-        dbg!(&router);
-
         // Iterate through all the registered neighbors and do the handshake
         for ip_addr in peers.iter() {
             let (socket, port) = (
@@ -150,7 +147,6 @@ impl Router {
                     Ok(_) => {
                         let msg = Router::read_to_string(&mut buf)?;
                         buf.fill(0);
-                        dbg!(&msg);
                         let mut json_obj: Message = serde_json::from_str(&msg)
                             .map_err(|e| format!("{e} -> failed to parse JSON object"))?;
                         match json_obj.r#type.as_str() {
@@ -274,82 +270,73 @@ impl Router {
     /// # Arguments
     /// * `json_obj` - A reference to the received "withdraw" message.
     /// * `ip_addr` - The IP address of the neighbor that sent the "withdraw" message.
-    fn handle_withdraw_message(
-        &self,
-        json_obj: &Message,
-        ip_addr: &str,
-    ) -> Result<(), String> {
+    fn handle_withdraw_message(&self, json_obj: &Message, ip_addr: &str) -> Result<(), String> {
         for _network in json_obj.msg.as_array().unwrap() {
             let network = _network["network"].as_str().unwrap();
             let netmask = _network["netmask"].as_str().unwrap();
-            
-        // Get the socket for the neighbor
-        let socket = self.sockets.get(ip_addr).unwrap();
-        // Get global table for updating
-        let mut table = GLOBAL_TABLE
-            .lock()
-            .map_err(|e| format!("{e} -> failed to lock the table"))?;
 
+            // Get the socket for the neighbor
+            let socket = self.sockets.get(ip_addr).unwrap();
+            // Get global table for updating
+            let mut table = GLOBAL_TABLE
+                .lock()
+                .map_err(|e| format!("{e} -> failed to lock the table"))?;
 
-        // Update the table
-        table.withdraw(
-            network,
-            netmask,
-            ip_addr,
-        );
+            // Update the table
+            table.withdraw(network, netmask, ip_addr);
 
-        // Logic for forwarding the announcement
-        // Decide who to forward the announcement to
-        match self.relations[ip_addr] {
-            // If sender is my customer, I will forward to everyone
-            NeighborType::Cust => {
-                for (nei_ip, nei_port) in self.ports.iter() {
-                    // Send the "withdraw" message to every neighbor except the origin
-                    if nei_ip != ip_addr {
-                        // Customize withdraw message
-                        let withdraw_msg = json!({
-                            "src": format!("{}{}", &nei_ip[..nei_ip.len() - 1], "1"),
-                            "dst": nei_ip,
-                            "type": "withdraw",
-                            "msg": [{
-                                "network": _network["network"],
-                                "netmask": _network["netmask"],
-                            }]
+            // Logic for forwarding the announcement
+            // Decide who to forward the announcement to
+            match self.relations[ip_addr] {
+                // If sender is my customer, I will forward to everyone
+                NeighborType::Cust => {
+                    for (nei_ip, nei_port) in self.ports.iter() {
+                        // Send the "withdraw" message to every neighbor except the origin
+                        if nei_ip != ip_addr {
+                            // Customize withdraw message
+                            let withdraw_msg = json!({
+                                "src": format!("{}{}", &nei_ip[..nei_ip.len() - 1], "1"),
+                                "dst": nei_ip,
+                                "type": "withdraw",
+                                "msg": [{
+                                    "network": _network["network"],
+                                    "netmask": _network["netmask"],
+                                }]
 
-                        });
-                        socket.send_to(withdraw_msg.to_string().as_bytes(),format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{nei_port}"))?;
+                            });
+                            socket.send_to(withdraw_msg.to_string().as_bytes(),format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{nei_port}"))?;
+                        }
                     }
                 }
-            }
-            // If sender is not my customer, I will only forward your announcement to my customer
-            _ => {
-                for (nei_ip, nei_port) in self.ports.iter() {
-                    // Send the "withdraw" message to every neighbor except the origin
-                    if nei_ip != ip_addr {
-                        // Forward announcement only to my customer
-                        match self.relations[nei_ip] {
-                            NeighborType::Cust => {
-                                // Customize withdraw message
-                                let withdraw_msg = json!({
-                                    "src": format!("{}{}", &nei_ip[..nei_ip.len() - 1], "1"),
-                                    "dst": nei_ip,
-                                    "type": "withdraw",
-                                    "msg": [{
-                                        "network": _network["network"],
-                                        "netmask": _network["netmask"],
-                                    }]
+                // If sender is not my customer, I will only forward your announcement to my customer
+                _ => {
+                    for (nei_ip, nei_port) in self.ports.iter() {
+                        // Send the "withdraw" message to every neighbor except the origin
+                        if nei_ip != ip_addr {
+                            // Forward announcement only to my customer
+                            match self.relations[nei_ip] {
+                                NeighborType::Cust => {
+                                    // Customize withdraw message
+                                    let withdraw_msg = json!({
+                                        "src": format!("{}{}", &nei_ip[..nei_ip.len() - 1], "1"),
+                                        "dst": nei_ip,
+                                        "type": "withdraw",
+                                        "msg": [{
+                                            "network": _network["network"],
+                                            "netmask": _network["netmask"],
+                                        }]
 
-                                });
-                                socket.send_to(withdraw_msg.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{nei_port}"))?;
+                                    });
+                                    socket.send_to(withdraw_msg.to_string().as_bytes(), format!("127.0.0.1:{nei_port}")).map_err(|e| format!("{e} -> failed to send update message to {ip_addr} with 127.0.0.1:{nei_port}"))?;
+                                }
+                                // Do nothing, if the neighbor is not my customer
+                                _ => {}
                             }
-                            // Do nothing, if the neighbor is not my customer
-                            _ => {}
                         }
                     }
                 }
             }
         }
-    }
 
         Ok(())
     }
@@ -358,11 +345,7 @@ impl Router {
     /// # Arguments
     /// * `json_obj` - A reference to the received "data" message.
     /// * `ip_addr` - The IP address of the neighbor that sent the "data" message.
-    fn handle_data_message(
-        &self,
-        json_obj: &Message,
-        ip_addr: &str
-    ) -> Result<(), String> {
+    fn handle_data_message(&self, json_obj: &Message, ip_addr: &str) -> Result<(), String> {
         let src_port = self.ports[ip_addr].clone();
         let socket = self.sockets.get(ip_addr).unwrap();
         // We check if we can find the best route in the table
@@ -448,11 +431,7 @@ impl Router {
     /// * `ip_addr` - neighbor's ip address
     /// # Returns
     /// * `Result<(), String>` - Ok(()) if the response was successfully sent, or Err(String) with an error message if not.
-    fn handle_dump_message(
-        &self,
-        message: &Message,
-        ip_addr: &str,
-    ) -> Result<(), String> {
+    fn handle_dump_message(&self, message: &Message, ip_addr: &str) -> Result<(), String> {
         let socket = self.sockets.get(ip_addr).unwrap();
         let src_port = self.ports[ip_addr].clone();
         let table = GLOBAL_TABLE
