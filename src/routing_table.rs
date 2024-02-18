@@ -177,11 +177,11 @@ impl Table {
         // Create a default Network
         let mut candidate = Network::new(
             "0".to_string(),
-            "0.0.0.0".to_string(),
+            "255.255.255.255".to_string(),
             "0.0.0.0".to_string(),
             0,
             false,
-            vec![],
+            table.table[0].ASPath.clone(),
             Origin::UNK,
         );
         let mut longest_prefix = 0;
@@ -238,7 +238,7 @@ impl Table {
                 }
             }
         }
-        if longest_prefix != 0 {
+        if candidate.peer != "0" {
             Ok(candidate.peer)
         } else {
             Err(format!("No route"))
