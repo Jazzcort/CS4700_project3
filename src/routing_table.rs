@@ -2,8 +2,8 @@
 /// and the network struct.
 use crate::{
     ipv4::{
-        self, apply_mask, apply_mask_prefix, check_match, divide_prefix, netmask_digit,
-        netnask_increase, to_decimal, to_ipv4,
+        apply_mask, apply_mask_prefix, check_match, divide_prefix, netmask_digit, netnask_increase,
+        to_decimal, to_ipv4,
     },
     router::GLOBAL_TABLE,
 };
@@ -19,6 +19,7 @@ pub enum Origin {
 
 /// This struct represents the network
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[allow(non_snake_case)]
 pub struct Network {
     peer: String,
     network: String,
@@ -29,7 +30,9 @@ pub struct Network {
     origin: Origin,
 }
 
+#[allow(non_snake_case)]
 impl Network {
+    // This function is used to create a new Network object.
     pub fn new(
         peer: String,
         network: String,
@@ -62,10 +65,9 @@ impl Table {
         Table { table: vec![] }
     }
 
-    /**
-     * This function update the routing table with the new network
-     */
+    // This function updates the routing table with the new network.
     pub fn update(&mut self, mut new_net: Network) {
+        // Remove the network from the table if it has the same network prefix, subnet mask, and peer IP as the given network.
         self.withdraw(&new_net.network, &new_net.netmask, &new_net.peer);
         loop {
             // Whenever we want to add the new row into table,
@@ -88,12 +90,14 @@ impl Table {
 
     /**
      * This function apply disaggregate mechanism to the routing table
-     * return true if successfully disaggregate something, 
-     * false if nothing gets disaggregate.
+     * return true if successfully disaggregate something,
+     * false if nothing gets disaggregated.
      */
     pub fn disaggregate(&mut self, network: &str, netmask: &str, peer: &str) -> bool {
         match (0..self.table.len()).into_iter().find(|ind| {
+            // Check peer IP
             self.table[*ind].peer == peer
+                // Check if the given network matched this row
                 && check_match(
                     &self.table[*ind].network,
                     &self.table[*ind].netmask,
@@ -101,12 +105,15 @@ impl Table {
                 )
         }) {
             Some(ind) => {
+                // Remove the matched row from table
                 let mut net = self.table.remove(ind);
+                // Divide the network if the subnet mask is different
                 while netmask_digit(&net.netmask) < netmask_digit(netmask) {
                     let new_netmask = netnask_increase(&net.netmask);
                     let (divided_net1, divided_net2) = divide_prefix(&net.network, &new_netmask);
-                    dbg!(&divided_net1, &divided_net2);
+
                     if check_match(&divided_net1, &new_netmask, network) {
+                        // Push the unmatched part back to the routing table
                         self.update(Network::new(
                             peer.to_string(),
                             divided_net2,
@@ -127,6 +134,7 @@ impl Table {
                             net.origin.clone(),
                         );
                     } else {
+                        // Push the unmatched part back to the routing table
                         self.update(Network::new(
                             peer.to_string(),
                             divided_net1,
@@ -150,10 +158,11 @@ impl Table {
                 }
                 true
             }
-            None => {false}
+            None => false,
         }
     }
 
+    // This is the getter function for table
     pub fn get_table(&self) -> &Vec<Network> {
         &self.table
     }
@@ -165,13 +174,14 @@ impl Table {
         let table = GLOBAL_TABLE
             .lock()
             .map_err(|e| format!("{e} -> failed to lock the table (best_route)"))?;
+        // Create a default Network
         let mut candidate = Network::new(
             "0".to_string(),
-            "0.0.0.0".to_string(),
+            "255.255.255.255".to_string(),
             "0.0.0.0".to_string(),
             0,
             false,
-            vec![],
+            table.table[0].ASPath.clone(),
             Origin::UNK,
         );
         let mut longest_prefix = 0;
@@ -180,10 +190,10 @@ impl Table {
             // let (network, netmask) = (net.network, net.netmask);
             if check_match(&net.network, &net.netmask, dst) {
                 let prefix_length = netmask_digit(&net.netmask);
+                // Check if the subnet mask is longer than the current longest prefix
                 if prefix_length > longest_prefix {
                     candidate = net.clone();
                     longest_prefix = prefix_length;
-                    // should we do continue here?
                 } else if prefix_length == longest_prefix {
                     // Check localpref
                     if candidate.localpref > net.localpref {
@@ -228,13 +238,16 @@ impl Table {
                 }
             }
         }
-
-        Ok(candidate.peer)
+        if candidate.peer != "0" {
+            Ok(candidate.peer)
+        } else {
+            Err(format!("No route"))
+        }
     }
 
     /**
      * This function apply aggregate mechanism to the routing table
-     * return Some(Network) if successfully aggregate something, 
+     * return Some(Network) if successfully aggregate something,
      * None if nothing gets aggregated.
      */
     fn aggregate(&mut self, network: Network) -> Option<Network> {
