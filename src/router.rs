@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Number, Value};
-use std::collections::{HashMap, HashSet};
+use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::Mutex;
-use std::thread::scope;
-use std::{any::Any, net::UdpSocket};
+use std::net::UdpSocket;
 
 use crate::routing_table::{Network, Table};
 
@@ -62,12 +61,20 @@ struct Message {
 }
 
 impl Router {
+    pub fn assign_asn(asn: u8) -> Result<(), String> {
+        let mut router = GLOBAL_ROUTER
+            .lock()
+            .map_err(|e| format!("Failed to lock router: {}", e))?;
+
+        router.asn = asn;
+        Ok(())
+    }
+
     // Creates a new Router instance
     pub fn add_neighbor(
         neighbor_addr: &str,
         neighbor_port: &str,
-        neighbor_relation: &str,
-        asn: u8,
+        neighbor_relation: &str
     ) -> Result<(), String> {
         // Lock the mutex here
         let mut router = GLOBAL_ROUTER
@@ -89,7 +96,6 @@ impl Router {
             .set_nonblocking(true)
             .map_err(|e| format!("{e} -> failed to switch to non-blockinf mode"))?;
 
-        router.asn = asn;
         router.sockets.insert(neighbor_addr.to_string(), udp_socket);
         router
             .ports
@@ -277,9 +283,8 @@ impl Router {
             let network = _network["network"].as_str().unwrap();
             let netmask = _network["netmask"].as_str().unwrap();
             
-            // Get the socket for the neighbor
+        // Get the socket for the neighbor
         let socket = self.sockets.get(ip_addr).unwrap();
-        let src_port = self.ports[ip_addr].clone();
         // Get global table for updating
         let mut table = GLOBAL_TABLE
             .lock()

@@ -1,14 +1,5 @@
-use clap::{Parser, ValueEnum};
-use std::net::UdpSocket;
-use router::{Router, GLOBAL_ROUTER, GLOBAL_TABLE};
-use serde_json::Value;
-
-use crate::{
-    ipv4::{
-        apply_mask, apply_mask_prefix, divide_prefix, netmask_digit, netnask_increase, to_decimal,
-    },
-    routing_table::{Network, Origin, Table},
-};
+use clap::Parser;
+use router::Router;
 
 mod ipv4;
 mod router;
@@ -26,6 +17,11 @@ struct Cli {
 fn main() {
     // Parse command line arguments into a `Cli` struct.
     let cli = Cli::parse();
+    // Assign AS number
+    match Router::assign_asn(cli.asn) {
+        Ok(_) => {println!("Successfully assigned AS number")},
+        Err(e) => {println!("{}", format!("{} -> Failed to assign AS number", e))}
+    }
     // Iterate over each neighbor specified in the command line arguments.
     for neighbor in &cli.neighbors {
         let neighbor_information: Vec<_> = neighbor.split('-').collect();
@@ -38,7 +34,7 @@ fn main() {
 
         // Attempt to add the neighbor to the global router. `Router::add_neighbor` updates
         // the global router instance with the new neighbor's details.
-        match Router::add_neighbor(neighbor_ip, neighbor_port, neighbor_relation, cli.asn) {
+        match Router::add_neighbor(neighbor_ip, neighbor_port, neighbor_relation) {
             Ok(()) => {
                 println!("Router created successfully");
             }
@@ -49,5 +45,5 @@ fn main() {
     }
 
     // Start the router.
-    Router::start_router();
+    Router::start_router().unwrap();
 }
